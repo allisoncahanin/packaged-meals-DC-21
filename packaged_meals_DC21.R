@@ -30,6 +30,7 @@ ingredients_sorted <- meals_unnested %>%
 
 
 #need to remove periods and [ ]
+#need to remove spaces at the beginning of ingredient names
 #fix plural ingredients like carrot/carrots
 #maybe case_when to change less than 2% salt to salt
 
@@ -101,4 +102,26 @@ juice(pca_prep) %>%
   labs(color = NULL)
 
 #tidying ingredients and grouping redundant ingredients with slightly different names might help plot make more sense
+#maybe look for a table with fdc_id numbers and meal names to join to the meals_wide_df so names are descriptive
 
+
+################################################
+###            EXPLORATORY UMAP              ###
+################################################
+
+library(embed)
+
+umap_rec <- recipe(~., data = meals_wide_df) %>%
+  update_role(fdc_id, branded_food_category, brand_owner, new_role = "id") %>%
+  step_normalize(all_predictors()) %>%
+  step_umap(all_predictors())
+
+umap_prep <- prep(umap_rec)
+
+umap_prep
+
+juice(umap_prep) %>%
+  ggplot(aes(umap_1, umap_2, label = fdc_id)) +
+  geom_point(aes(color = branded_food_category), alpha = 0.7, size = 2) +
+  geom_text(check_overlap = TRUE, hjust = "inward", family = "IBMPlexSans") +
+  labs(color = NULL)
