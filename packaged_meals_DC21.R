@@ -1,4 +1,3 @@
-# this is KT testing github connection.
 library(tidyverse)
 library(tidytext)
 
@@ -56,6 +55,37 @@ meals_parsed <- meals_df %>%
          ingredients = str_replace_all(ingredients, ",,", ","),
          ingredients = str_replace_all(ingredients, ", ,", ","))
 
+# KT testing additional cleaning of ingredients. There is 100% likely a more elegant way to do this :D!
+# Open to suggestions as to how we want to do this. Feel free to pull it into your above code, Allie!
+# I was working with a different variable of "clean" instead of directly modifying meals_parsed until
+# you have a chance to review.
+library(janitor)
+clean=clean_names(meals_parsed)
+clean$ingredients=trimws(clean$ingredients) # this could probably be modified to mutate() like the above.
+  clean$ingredients=gsub('^,','',clean$ingredients)
+  clean$ingredients=gsub('^ ','',clean$ingredients)
+  clean$ingredients=gsub(' ,',', ',clean$ingredients)
+  clean$ingredients=gsub('  ',' ',clean$ingredients)
+  clean$ingredients=gsub('&','',clean$ingredients)
+  clean$ingredients=gsub('-','',clean$ingredients)
+  clean$ingredients=gsub('%','',clean$ingredients)
+  clean$ingredients=gsub('less than','',clean$ingredients)
+  clean$ingredients=gsub('of','',clean$ingredients)
+  clean$ingredients=gsub('or more','',clean$ingredients)
+  clean$ingredients=gsub('one','',clean$ingredients)
+  clean$ingredients=gsub('[0-9]+','',clean$ingredients)
+  clean$ingredients=gsub('#','',clean$ingredients)
+  clean$ingredients=gsub('/','',clean$ingredients)
+  clean$ingredients=gsub('â','',clean$ingredients)
+  clean$ingredients=gsub('®','',clean$ingredients)
+  clean$ingredients=gsub('>','',clean$ingredients)
+  clean$ingredients=gsub('+','',clean$ingredients)
+  clean$ingredients=gsub(';','',clean$ingredients)
+  clean$ingredients=gsub(",$","",clean$ingredients)
+  clean$ingredients=gsub("     ,","",clean$ingredients)
+  clean$ingredients=gsub(', ,',', ',clean$ingredients)
+  clean$ingredients=gsub(",,",",",clean$ingredients)
+# End KT testing additional clean up.
 
 meals_unnested <- unnest_regex(meals_parsed, #un-nesting using comma as delimiter
                input= ingredients, 
