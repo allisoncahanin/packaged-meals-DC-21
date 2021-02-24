@@ -6,7 +6,7 @@ nutrient_names <- read.csv("C:/Users/allis/OneDrive/Documents/GitHub/packaged-me
 food_names <- read.csv("C:/Users/allis/OneDrive/Documents/GitHub/packaged-meals-DC-21/food.csv")
 
 
-id_list <- meals_wide_df$fdc_id
+id_list <- meals_wide_df$fdc_id #get id # from meals_wide_df in packaged_meals R script
 id_list
 
 meals_nutrient$id <- meals_nutrient$derivation_id <- NULL #removing unnecessary columns
@@ -56,10 +56,19 @@ library(tidymodels)
 nutrient_pca_rec <- recipe(~ ., data = nutrient_wide_df) %>% #create recipe for PCA
   update_role(fdc_id, branded_food_category, brand_owner, description, new_role = "id") %>% #set roles as "id" for non-predictor variables
   step_normalize(all_predictors()) %>% #center and scale all predictors
-  step_pca(all_predictors()) #train PCA (no values computed here)
+  step_pca(all_predictors(), id = "pca") %>% #train PCA (no values computed here)
+  prep()
 
 nutrient_pca_prep <- prep(nutrient_pca_rec) #values are computed
 nutrient_pca_prep
+
+nutrient_pca_rec %>% #create a histogram showing % of variance explained by each PCA (PCA1 is only 20%....)
+  tidy(id = "pca", type = "variance") %>% 
+  dplyr::filter(terms == "percent variance") %>% 
+  ggplot(aes(x = component, y = value)) + 
+  geom_col(fill = "#b6dfe2") + 
+  xlim(c(0, 5)) + 
+  ylab("% of total variance")
 
 nutrient_tidied_pca <- tidy(nutrient_pca_prep, 2)
 

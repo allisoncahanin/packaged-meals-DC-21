@@ -10,54 +10,84 @@ meals <- read.csv("C:/Users/allis/OneDrive/Documents/GitHub/packaged-meals-DC-21
 
 meals_df <- data_frame(meals)
 
-meals_unnested <- meals_df %>%
+meals_parsed <- meals_df %>%
   mutate(ingredients = str_to_lower(ingredients),
+         ingredients = str_remove_all(ingredients, regex("less than 2% of:?", ignore_case = T)), #remove non-ingredient strings
+         ingredients = str_remove_all(ingredients, regex("contains 2% or less of:?", ignore_case = T)),
+         ingredients = str_remove_all(ingredients, regex("contains two percent or less of:?")),
+         ingredients = str_remove_all(ingredients, regex("contains 2% or less:?")),
+         ingredients = str_remove_all(ingredients, regex("and 2% or less:?")),
+         ingredients = str_remove_all(ingredients, regex("and less than 2%:?")),
+         ingredients = str_remove_all(ingredients, regex("2% or less of")),
+         ingredients = str_remove_all(ingredients, regex("cured with:?")),
+         ingredients = str_remove_all(ingredients, regex("contains the following:?")),
+         ingredients = str_remove_all(ingredients, regex("each of the following:?")),
+         ingredients = str_remove_all(ingredients, regex("the following:?")),
+         ingredients = str_remove_all(ingredients, regex("dried")),
+         ingredients = str_remove_all(ingredients, regex("contains")),
+         ingredients = str_remove_all(ingredients, regex("anticaking agent")),
+         ingredients = str_remove_all(ingredients, regex("for anticaking")),
+         ingredients = str_remove_all(ingredients, regex("to prevent caking")),
+         ingredients = str_remove_all(ingredients, regex("a preservative")),
+         ingredients = str_remove_all(ingredients, regex("added")),
+         ingredients = str_remove_all(ingredients, regex("for color")),
+         ingredients = str_remove_all(ingredients, regex("added for color")),
+         ingredients = str_remove_all(ingredients, regex("a natural mold inhibitor")),
+         ingredients = str_remove_all(ingredients, regex("preserve freshness")),
+         ingredients = str_remove_all(ingredients, regex("to maintain freshness")),
+         ingredients = str_remove_all(ingredients, regex("ingredients")),
+         ingredients = str_remove_all(ingredients, regex("filling")),
+         ingredients = str_remove_all(ingredients, regex("crust")),
+         ingredients = str_remove_all(ingredients, regex("sauce")),
+         ingredients = str_remove_all(ingredients, regex("one or more of the following:?")),
+         ingredients = str_remove_all(ingredients, regex(" to ")),
+         ingredients = str_remove_all(ingredients, regex("from")),
+         ingredients = str_remove_all(ingredients, "\\*"), 
+         ingredients = str_remove_all(ingredients, "\\."),
+         ingredients = str_replace_all(ingredients, "and/or", ","),
+         ingredients = str_replace_all(ingredients, "and", ","),
          ingredients = str_replace_all(ingredients, "\\(", ","), #replacing delimiters
          ingredients = str_replace_all(ingredients, "\\)", ","),
+         ingredients = str_replace_all(ingredients, "\\{", ","),
+         ingredients = str_replace_all(ingredients, "\\}", ","),
          ingredients = str_replace_all(ingredients, ":", ","),
-         ingredients = str_replace_all(ingredients, ",,", ","))
+         ingredients = str_replace_all(ingredients, "\\[", ","),
+         ingredients = str_replace_all(ingredients, "\\]", ","),
+         ingredients = str_replace_all(ingredients, ",,", ","),
+         ingredients = str_replace_all(ingredients, ", ,", ","))
 
 
-meals_unnested <- unnest_regex(meals_unnested, #unnesting using comma as delimiter
+meals_unnested <- unnest_regex(meals_parsed, #un-nesting using comma as delimiter
                input= ingredients, 
                output = ingredient, 
                pattern = ",")
 
-ingredients_sorted <- meals_unnested %>% 
+meals_tidy <- meals_unnested %>%
+  mutate(ingredient = str_trim(ingredient),
+         ingredient = case_when(str_detect(ingredient, "flavor") ~ "flavoring", #fix some common issues/words with same meaning
+                                str_detect(ingredient, "salt") ~ "salt",
+                                str_detect(ingredient, "seasoning") ~ "spice",
+                                str_detect(ingredient, "oes$") ~ str_remove(ingredient, "es$"), #remove plural words
+                                str_detect(ingredient, "[^s]s$") ~ str_remove(ingredient, "s$"),
+                                TRUE ~ ingredient))
+
+ingredients_sorted <- meals_tidy %>% 
   count(ingredient,sort = T) %>%
   filter(n > 20)
          
-
-
-#need to remove periods and [ ]
-#need to remove spaces at the beginning of ingredient names
-#fix plural ingredients like carrot/carrots
-#maybe case_when to change less than 2% salt to salt
 
 ################################################
 ###             EXPLORATORY PCA              ###
 ################################################
 
-
-meals_df <- data_frame(meals)
-
-meals_parsed <- meals_df %>%
-  mutate(ingredients = str_to_lower(ingredients),
-         ingredients = str_replace_all(ingredients, "\\(", ","), #replacing delimiters
-         ingredients = str_replace_all(ingredients, "\\)", ","),
-         ingredients = str_replace_all(ingredients, ":", ","),
-         ingredients = str_replace_all(ingredients, ",,", ","))
-
-meals_parsed <- unnest_regex(meals_parsed, input= ingredients, #unnesting
-                output = ingredient, 
-                pattern = ",") %>%
+meals_tidy <- meals_tidy %>%
   add_count(ingredient) %>%
-  filter(n > 15) %>%
+  filter(n > 20) %>%
   select(-n) %>%
   distinct(fdc_id, ingredient, .keep_all = T) %>%
   add_column(measure = 1)
 
-meals_wide_df <- spread(meals_parsed, key = ingredient, value = measure, fill = 0) #pivot wider
+meals_wide_df <- spread(meals_tidy, key = ingredient, value = measure, fill = 0) #pivot wider
 
 meals_wide_df$gtin_upc <- meals_wide_df$serving_size <- meals_wide_df$serving_size_unit <- NULL #removing columns
 meals_wide_df$household_serving_fulltext <- meals_wide_df$data_source <- meals_wide_df$available_date <- NULL
@@ -68,14 +98,21 @@ library(tidymodels)
 pca_rec <- recipe(~ ., data = meals_wide_df) %>% #no values computed here
   update_role(fdc_id, branded_food_category, brand_owner, new_role = "id") %>%
   step_normalize(all_predictors()) %>%
-  step_pca(all_predictors())
+  step_pca(all_predictors(), id = "pca") %>%
+  prep()
 
 pca_prep <- prep(pca_rec) #values are computed
 pca_prep
 
-tidied_pca <- tidy(pca_prep, 2)
+pca_rec %>% #create a histogram showing % of variance explained by each PCA (PCA1 is only 3%....)
+  tidy(id = "pca", type = "variance") %>% 
+  dplyr::filter(terms == "percent variance") %>% 
+  ggplot(aes(x = component, y = value)) + 
+  geom_col(fill = "#b6dfe2") + 
+  xlim(c(0, 5)) + 
+  ylab("% of total variance")
 
-tidied_pca %>% #this works but there are way too many ingredients (need to tidy ingredients and sort for top x amount)
+tidied_pca %>% #visualization
   filter(component %in% paste0("PC", 1:5)) %>%
   mutate(component = fct_inorder(component)) %>%
   ggplot(aes(value, terms, fill = terms)) +
@@ -83,7 +120,7 @@ tidied_pca %>% #this works but there are way too many ingredients (need to tidy 
   facet_wrap(~component, nrow = 1) +
   labs(y = NULL)
 
-tidied_pca %>% 
+tidied_pca %>% #vistualization
   filter(component %in% paste0("PC", 1:4)) %>%
   group_by(component) %>%
   top_n(8, abs(value)) %>%
@@ -95,14 +132,11 @@ tidied_pca %>%
   facet_wrap(~component, scales = "free_y") +
   labs(y = NULL, fill = "Positive?")
 
-juice(pca_prep) %>%
+juice(pca_prep) %>% #visualization
   ggplot(aes(PC1, PC2, label = fdc_id)) +
   geom_point(aes(color = branded_food_category),alpha = 0.7, size = 2) +
   geom_text(check_overlap = TRUE, hjust = "inward", family = "IBMPlexSans") +
   labs(color = NULL)
-
-#tidying ingredients and grouping redundant ingredients with slightly different names might help plot make more sense
-#maybe look for a table with fdc_id numbers and meal names to join to the meals_wide_df so names are descriptive
 
 
 ################################################
