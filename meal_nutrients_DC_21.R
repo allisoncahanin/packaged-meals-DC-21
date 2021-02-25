@@ -46,6 +46,9 @@ nutrient_wide_df <- nutrient_wide_df %>% #text cleaning with regular expressions
          description = str_remove(description, regex(" [[:alnum:]]{1,3}[[:blank:]]?lb", ignore_case = T)),
          description = str_remove(description, regex(" [[:alnum:]]/[[:alnum:]][[:blank:]]?lb", ignore_case = T)))
 
+test <- nutrient_wide_df %>%
+  distinct(description, .keep_all = T) #removing duplicate entries (probably same meal but 2pk vs 4pk)
+
 
 ################################################
 ###             EXPLORATORY PCA              ###

@@ -44,7 +44,7 @@ meals_parsed <- meals_df %>%
          ingredients = str_remove_all(ingredients, "\\*"), 
          ingredients = str_remove_all(ingredients, "\\."),
          ingredients = str_replace_all(ingredients, "and/or", ","),
-         ingredients = str_replace_all(ingredients, "and", ","),
+         ingredients = str_replace_all(ingredients, " and ", ","),
          ingredients = str_replace_all(ingredients, "\\(", ","), #replacing delimiters
          ingredients = str_replace_all(ingredients, "\\)", ","),
          ingredients = str_replace_all(ingredients, "\\{", ","),
@@ -104,29 +104,46 @@ meals_tidy <- meals_unnested %>%
 ingredients_sorted <- meals_tidy %>% 
   count(ingredient,sort = T) %>%
   filter(n > 20)
-         
+
+meals_tidy <- meals_tidy %>% #adding food description (name of food)
+  inner_join(food_names) %>%
+  select(description, everything(meals_tidy))
+
+meals_tidy <- meals_tidy %>% #text cleaning with regular expressions to remove oz/lb and pack/count
+  mutate(description = str_to_title(description),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}\\.?[[:alnum:]]{0,2}[[:blank:]]?oz", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}\\.?[[:alnum:]]{0,2}[[:blank:]]?ounce", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}[[:blank:]]?ct", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}[[:blank:]]?count", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}[[:blank:]]?pack", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}[[:blank:]]?pk", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]{1,3}[[:blank:]]?lb", ignore_case = T)),
+         description = str_remove(description, regex(" [[:alnum:]]/[[:alnum:]][[:blank:]]?lb", ignore_case = T)))
+
 
 ################################################
 ###             EXPLORATORY PCA              ###
 ################################################
 
-meals_tidy <- meals_tidy %>%
+meals_tidy <- meals_tidy %>% #select only ingredients that occur more than 500 times (~top 60 most common ingredients)
   add_count(ingredient) %>%
-  filter(n > 20) %>%
+  filter(n > 500) %>%
   select(-n) %>%
-  distinct(fdc_id, ingredient, .keep_all = T) %>%
-  add_column(measure = 1)
+  distinct(fdc_id, ingredient, .keep_all = T)
+
+meals_tidy$gtin_upc <- meals_tidy$serving_size <- meals_tidy$serving_size_unit <- NULL #removing columns
+meals_tidy$household_serving_fulltext <- meals_tidy$data_source <- meals_tidy$available_date <- NULL
+meals_tidy$market_country <- meals_tidy$discontinued_date <- meals_tidy$modified_date <- meals_tidy$nn <-NULL
 
 meals_wide_df <- spread(meals_tidy, key = ingredient, value = measure, fill = 0) #pivot wider
 
-meals_wide_df$gtin_upc <- meals_wide_df$serving_size <- meals_wide_df$serving_size_unit <- NULL #removing columns
-meals_wide_df$household_serving_fulltext <- meals_wide_df$data_source <- meals_wide_df$available_date <- NULL
-meals_wide_df$market_country <- meals_wide_df$discontinued_date <- meals_wide_df$modified_date <- NULL
+meals_wide_df <- meals_wide_df %>% #remove duplicate entries for meals with multiple size options (2pk vs 4pk)
+  distinct(description, .keep_all = T)
 
 library(tidymodels)
 
 pca_rec <- recipe(~ ., data = meals_wide_df) %>% #no values computed here
-  update_role(fdc_id, branded_food_category, brand_owner, new_role = "id") %>%
+  update_role(description, fdc_id, branded_food_category, brand_owner, new_role = "id") %>%
   step_normalize(all_predictors()) %>%
   step_pca(all_predictors(), id = "pca") %>%
   prep()
@@ -134,13 +151,15 @@ pca_rec <- recipe(~ ., data = meals_wide_df) %>% #no values computed here
 pca_prep <- prep(pca_rec) #values are computed
 pca_prep
 
-pca_rec %>% #create a histogram showing % of variance explained by each PCA (PCA1 is only 3%....)
+pca_rec %>% #PC1 accounts for almost 20%, 2 and 3 about 5%
   tidy(id = "pca", type = "variance") %>% 
   dplyr::filter(terms == "percent variance") %>% 
   ggplot(aes(x = component, y = value)) + 
   geom_col(fill = "#b6dfe2") + 
   xlim(c(0, 5)) + 
   ylab("% of total variance")
+
+tidied_pca <- tidy(pca_prep, 2)
 
 tidied_pca %>% #visualization
   filter(component %in% paste0("PC", 1:5)) %>%
@@ -163,7 +182,7 @@ tidied_pca %>% #vistualization
   labs(y = NULL, fill = "Positive?")
 
 juice(pca_prep) %>% #visualization
-  ggplot(aes(PC1, PC2, label = fdc_id)) +
+  ggplot(aes(PC2, PC3, label = fdc_id)) +
   geom_point(aes(color = branded_food_category),alpha = 0.7, size = 2) +
   geom_text(check_overlap = TRUE, hjust = "inward", family = "IBMPlexSans") +
   labs(color = NULL)
@@ -176,7 +195,7 @@ juice(pca_prep) %>% #visualization
 library(embed)
 
 umap_rec <- recipe(~., data = meals_wide_df) %>%
-  update_role(fdc_id, branded_food_category, brand_owner, new_role = "id") %>%
+  update_role(description, fdc_id, branded_food_category, brand_owner, new_role = "id") %>%
   step_normalize(all_predictors()) %>%
   step_umap(all_predictors())
 
@@ -185,7 +204,7 @@ umap_prep <- prep(umap_rec)
 umap_prep
 
 juice(umap_prep) %>%
-  ggplot(aes(umap_1, umap_2, label = fdc_id)) +
+  ggplot(aes(umap_1, umap_2, label = description)) +
   geom_point(aes(color = branded_food_category), alpha = 0.7, size = 2) +
   geom_text(check_overlap = TRUE, hjust = "inward", family = "IBMPlexSans") +
   labs(color = NULL)
