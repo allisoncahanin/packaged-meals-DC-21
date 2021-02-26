@@ -1,7 +1,10 @@
 library(tidyverse)
 library(tidytext)
 
-meals <- read.csv("C:/Users/allis/OneDrive/Documents/GitHub/packaged-meals-DC-21/Data_Lv2_USDA_PackagedMeals.csv")
+meals <- read.csv("//users//ktrdktrn//Desktop//Data_Lv2_USDA_PackagedMeals.csv")
+meals_nutrient <- read.csv("//users//ktrdktrn//Desktop//food_nutrient.csv", header = T)
+nutrient_names <- read.csv("//users//ktrdktrn//Desktop//nutrient.csv")
+food_names <- read.csv("//users//ktrdktrn//Desktop//food.csv")
 
 ################################################
 ###          EXPLORATORY ANALYSIS            ###
@@ -53,39 +56,31 @@ meals_parsed <- meals_df %>%
          ingredients = str_replace_all(ingredients, "\\[", ","),
          ingredients = str_replace_all(ingredients, "\\]", ","),
          ingredients = str_replace_all(ingredients, ",,", ","),
-         ingredients = str_replace_all(ingredients, ", ,", ","))
-
-# KT testing additional cleaning of ingredients. There is 100% likely a more elegant way to do this :D!
-# Open to suggestions as to how we want to do this. Feel free to pull it into your above code, Allie!
-# I was working with a different variable of "clean" instead of directly modifying meals_parsed until
-# you have a chance to review.
-library(janitor)
-clean=clean_names(meals_parsed)
-clean$ingredients=trimws(clean$ingredients) # this could probably be modified to mutate() like the above.
-  clean$ingredients=gsub('^,','',clean$ingredients)
-  clean$ingredients=gsub('^ ','',clean$ingredients)
-  clean$ingredients=gsub(' ,',', ',clean$ingredients)
-  clean$ingredients=gsub('  ',' ',clean$ingredients)
-  clean$ingredients=gsub('&','',clean$ingredients)
-  clean$ingredients=gsub('-','',clean$ingredients)
-  clean$ingredients=gsub('%','',clean$ingredients)
-  clean$ingredients=gsub('less than','',clean$ingredients)
-  clean$ingredients=gsub('of','',clean$ingredients)
-  clean$ingredients=gsub('or more','',clean$ingredients)
-  clean$ingredients=gsub('one','',clean$ingredients)
-  clean$ingredients=gsub('[0-9]+','',clean$ingredients)
-  clean$ingredients=gsub('#','',clean$ingredients)
-  clean$ingredients=gsub('/','',clean$ingredients)
-  clean$ingredients=gsub('â','',clean$ingredients)
-  clean$ingredients=gsub('®','',clean$ingredients)
-  clean$ingredients=gsub('>','',clean$ingredients)
-  clean$ingredients=gsub('+','',clean$ingredients)
-  clean$ingredients=gsub(';','',clean$ingredients)
-  clean$ingredients=gsub(",$","",clean$ingredients)
-  clean$ingredients=gsub("     ,","",clean$ingredients)
-  clean$ingredients=gsub(', ,',', ',clean$ingredients)
-  clean$ingredients=gsub(",,",",",clean$ingredients)
-# End KT testing additional clean up.
+         ingredients = str_replace_all(ingredients, ", ,", ","),
+         ingredients = str_remove_all(ingredients, regex("\\&")),
+         ingredients = str_remove_all(ingredients, regex("\\-")),
+         ingredients = str_replace_all(ingredients, regex("[[:alnum:]]*%"),","),
+         ingredients = str_remove_all(ingredients, regex("b[[:digit:]]{1,2}")),
+         ingredients = str_remove_all(ingredients, regex("\\#")),
+         ingredients = str_remove_all(ingredients, regex("/")),
+         ingredients = str_remove_all(ingredients, regex("\\>")),
+         ingredients = str_remove_all(ingredients, regex("\\+")),
+         ingredients = str_remove_all(ingredients, regex("\\;")),
+         ingredients = str_remove_all(ingredients, regex("\\â")),
+         ingredients = str_remove_all(ingredients, regex("\\®")),
+         ingredients = str_remove_all(ingredients, regex("\\'")),
+         ingredients = str_remove_all(ingredients, regex("less than")),
+         ingredients = str_remove_all(ingredients, regex(" of ")),
+         ingredients = str_remove_all(ingredients, regex("or more")),
+         ingredients = str_remove_all(ingredients, regex(" one ")),
+         ingredients = str_remove_all(ingredients, regex("^,")),
+         ingredients = str_remove_all(ingredients, regex("^ ,")),
+         ingredients = str_remove_all(ingredients, regex(",,")),
+         ingredients = str_remove_all(ingredients, regex("^ ,")),
+         ingredients = str_replace_all(ingredients, regex(",[[:blank:]]*,"),","),
+         ingredients = str_replace_all(ingredients, regex(", of,"),","),
+         ingredients = trimws(ingredients, whitespace=","),
+         ingredients = trimws(ingredients))
 
 meals_unnested <- unnest_regex(meals_parsed, #un-nesting using comma as delimiter
                input= ingredients, 
@@ -102,8 +97,15 @@ meals_tidy <- meals_unnested %>%
                                 TRUE ~ ingredient))
 
 ingredients_sorted <- meals_tidy %>% 
+  count(ingredient,sort = T)
+
+ingredient_summary=as.vector(summary(ingredients_sorted$n))
+
+ingredients_sorted <- meals_tidy %>% 
   count(ingredient,sort = T) %>%
-  filter(n > 20)
+  filter(n > (ingredient_summary[4]))
+
+write_csv(ingredients_sorted, "//users//ktrdktrn//Desktop//top-ingredients.csv")
 
 meals_tidy <- meals_tidy %>% #adding food description (name of food)
   inner_join(food_names) %>%
@@ -170,7 +172,7 @@ tidied_pca %>% #visualization
   facet_wrap(~component, nrow = 1) +
   labs(y = NULL)
 
-tidied_pca %>% #vistualization
+tidied_pca %>% #visualization
   filter(component %in% paste0("PC", 1:4)) %>%
   group_by(component) %>%
   top_n(8, abs(value)) %>%
@@ -183,7 +185,7 @@ tidied_pca %>% #vistualization
   labs(y = NULL, fill = "Positive?")
 
 juice(pca_prep) %>% #visualization
-  ggplot(aes(PC2, PC3, label = fdc_id)) +
+  ggplot(aes(PC1, PC2, label = fdc_id)) +
   geom_point(aes(color = branded_food_category),alpha = 0.7, size = 2) +
   geom_text(check_overlap = TRUE, hjust = "inward", family = "IBMPlexSans") +
   labs(color = NULL)
