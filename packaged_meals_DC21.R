@@ -129,7 +129,8 @@ meals_tidy <- meals_tidy %>% #select only ingredients that occur more than 500 t
   add_count(ingredient) %>%
   filter(n > 500) %>%
   select(-n) %>%
-  distinct(fdc_id, ingredient, .keep_all = T)
+  distinct(fdc_id, ingredient, .keep_all = T) %>%
+  add_column(measure = 1)
 
 meals_tidy$gtin_upc <- meals_tidy$serving_size <- meals_tidy$serving_size_unit <- NULL #removing columns
 meals_tidy$household_serving_fulltext <- meals_tidy$data_source <- meals_tidy$available_date <- NULL
